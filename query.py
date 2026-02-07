@@ -569,30 +569,49 @@ class QueryTab(QWidget):
             QMessageBox.critical(self, "查询错误", f"执行查询时发生错误: {e}")
 
     # 在 execute_query 方法的末尾，或者新添加的方法中
+    # 找到 open_ai_chat 方法，完全替换为以下内容：
     def open_ai_chat(self):
-        # 1. 获取当前查询结果
-        if not self.current_results:
-            QMessageBox.warning(self, "提示", "请先查询数据，再使用AI分析。")
-            return
+        try:
+            # 1. 检查是否有数据
+            if not self.current_results:
+                QMessageBox.warning(self, "提示", "请先查询数据，再使用AI分析。")
+                return
 
-        # 2. 数据清洗与压缩 (Token很贵，不能把无关字段全塞进去)
-        # 仅提取关键字段用于对话
-        simplified_data = []
-        for person in self.current_results:  # 限制数量，防止爆内存，比如取前20条
-            simplified_data.append({
-                "姓名": person.get("name"),
-                "职务": person.get("current_position"),
-                "学历": person.get("fulltime_education"),
-                "出生年月": person.get("birth_date")
-                # ...根据需要添加字段
-            })
+            # 2. 安全的数据清洗 (防止 NoneType 或不可序列化对象导致崩溃)
+            simplified_data = []
+            # 只取前 30 条，防止 Token 溢出
+            for person in self.current_results[:30]:
+                try:
+                    item = {
+                        "姓名": str(person.get("name", "未知")),
+                        "职务": str(person.get("current_position", "无")),
+                        "学历": str(person.get("fulltime_education", "")),
+                        "出生": str(person.get("birth_date", ""))
+                    }
+                    simplified_data.append(item)
+                except Exception:
+                    continue  # 跳过有问题的数据行
 
-        # 限制数据量，防止超过模型上下文窗口 (例如 Qwen1.8B 通常支持 4k 或 8k)
-        data_str = json.dumps(simplified_data[:50], ensure_ascii=False)
+            # 3. JSON 序列化 (这是最容易闪退的地方)
+            data_str = json.dumps(simplified_data, ensure_ascii=False)
 
-        # 3. 打开对话框
-        dlg = AIChatDialog(data_str, self)
-        dlg.exec_()
+            # 4. 检查 AI 模块是否能正常导入
+            try:
+                from ai_chat import AIChatDialog
+            except ImportError as e:
+                QMessageBox.critical(self, "组件缺失", f"无法加载 AI 对话模块：\n{e}")
+                return
+
+            # 5. 打开对话框
+            dlg = AIChatDialog(data_str, self)
+            dlg.exec_()
+
+        except Exception as e:
+            # 捕获所有未知错误，防止闪退
+            import traceback
+            error_msg = traceback.format_exc()
+            logger.error(f"AI 功能启动失败: {error_msg}")
+            QMessageBox.critical(self, "错误", f"启动 AI 分析时发生错误：\n{str(e)}\n\n(详细日志已记录)")
 
     def show_table_data(self, table_name: str):
         """显示指定表的数据"""
