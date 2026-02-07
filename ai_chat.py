@@ -1,6 +1,7 @@
 import sys
 import os
 import threading
+import traceback  # 【修改点1】导入 traceback 用于打印堆栈
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QTextEdit, QLineEdit,
                              QPushButton, QLabel, QHBoxLayout)
 from PyQt5.QtCore import pyqtSignal, QObject, Qt
@@ -45,6 +46,8 @@ class AIWorker(QObject):
             return
 
         try:
+            print(f"DEBUG: 正在尝试加载模型: {self.model_path}")  # 添加调试打印
+
             # 加载模型
             # n_ctx: 上下文长度。2048 对于 4GB-8GB 内存的老电脑比较安全。
             # n_threads: CPU线程数，设为4以平衡性能和系统响应。
@@ -54,7 +57,7 @@ class AIWorker(QObject):
                 n_ctx=2048,
                 n_threads=4,
                 n_gpu_layers=0,
-                verbose=False
+                verbose=True  # 【修改点2】改为 True，以便在控制台看到底层 C++ 加载日志
             )
 
             messages = [
@@ -62,11 +65,25 @@ class AIWorker(QObject):
                 {"role": "user", "content": self.user_query}
             ]
 
+            print("DEBUG: 模型加载成功，开始推理...")  # 添加调试打印
+
             # 开始推理
             output = llm.create_chat_completion(messages=messages, temperature=0.7)
             response = output['choices'][0]['message']['content']
             self.finished.emit(response)
+
         except Exception as e:
+            # 【修改点3】详细打印错误信息到控制台，帮助排查问题
+            print("\n" + "=" * 50)
+            print("!!! AIWorker 发生严重错误 !!!")
+            print(f"错误类型: {type(e).__name__}")
+            print(f"错误详情: {str(e)}")
+            print("-" * 30)
+            print("完整堆栈信息 (Traceback):")
+            traceback.print_exc()
+            print("=" * 50 + "\n")
+
+            # 将错误信息发送回界面显示
             self.finished.emit(f"AI 运行出错: {str(e)}\n(可能是内存不足或模型文件损坏)")
 
 
@@ -103,9 +120,7 @@ class AIChatDialog(QDialog):
         input_layout.addWidget(self.input_field)
         input_layout.addWidget(self.send_btn)
 
-        # === 修复点：使用 addLayout 而不是 addWidget ===
         layout.addLayout(input_layout)
-        # ============================================
 
         # 状态检查与显示
         status_text = "就绪 (本地CPU模式)"
@@ -128,7 +143,7 @@ class AIChatDialog(QDialog):
         self.chat_history.append(f"<b>我:</b> {question}")
         self.input_field.clear()
         self.send_btn.setEnabled(False)
-        self.status_label.setText("AI 正在思考中... (这可能需要一些时间)")
+        self.status_label.setText("AI 正在思考中... (请查看控制台日志)")
 
         # 构建提示词 (Prompt Engineering)
         system_prompt = (
