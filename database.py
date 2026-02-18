@@ -198,11 +198,7 @@ class Database:
             '在职学历学位': 'parttime_education',
             '在职毕业院校及专业': 'parttime_school',
             '奖惩': 'rewards',
-            '2021年年度考核结果': 'assessment_2021',
-            '2022年年度考核结果': 'assessment_2022',
-            '2023年年度考核结果': 'assessment_2023',
-            '2024年年度考核结果': 'assessment_2024',
-            '2025年年度考核结果': 'assessment_2025',
+
             '备注': 'remarks',
 
             # 奖惩信息表映射
