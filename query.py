@@ -599,8 +599,6 @@ class QueryTab(QWidget):
                     "学历": "fulltime_education", "出生": "birth_date",
                     "入额": "admission_date", "下次晋升": "next_promotion"
                 }
-                # 如果确实需要年度考核信息，可以动态添加，但建议只取最近3年
-                # assessment_years = self.db.get_assessment_years()[-3:]
 
             elif self.current_table_name == 'rewards':
                 field_mapping = {
@@ -640,9 +638,8 @@ class QueryTab(QWidget):
                     # 【关键清洗步骤】
                     # 1. 去除换行符：保持一行一条记录
                     # 2. 替换英文逗号：防止破坏 CSV 结构
-                    # 3. 截断超长文本：简历、长备注强制截断
                     val = val.replace('\n', ' ').replace('\r', '').replace(',', '，')
-                    if len(val) > 50: val = val[:50] + "..."
+
 
                     row_values.append(val)
 
