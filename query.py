@@ -577,69 +577,143 @@ class QueryTab(QWidget):
             logger.error(f"查询执行失败: {e}")
             QMessageBox.critical(self, "查询错误", f"执行查询时发生错误: {e}")
 
-    # 在 execute_query 方法的末尾，或者新添加的方法中
+    def get_full_field_mapping(self, table_name: str) -> dict:
+        """
+        获取指定表的所有字段映射（数据库字段名 -> 中文表头名）
+        用于确保 AI 能读取到所有列，且能理解列的含义
+        """
+        if table_name == 'base_info':
+            mapping = {
+                "sequence": "序号",
+                "name": "姓名",
+                "next_promotion": "距离下次职级晋升时间",
+                "current_position": "现任职务",
+                "current_position_date": "任现职务时间",
+                "current_grade": "职级/等级",
+                "current_grade_date": "任现职级/等级时间",
+                "previous_position1": "前一职务",
+                "previous_position1_date": "前一职务任职时间",
+                "previous_position2": "前二职务",
+                "previous_position2_date": "前二职务任职时间",
+                "current_legal_position": "现任法律职务",
+                "current_legal_position_date": "现任法律职务任职时间",
+                "previous_legal_position": "前一法律职务",
+                "previous_legal_position_date": "前一法律职务任职时间",
+                "admission_date": "入额时间",
+                "entry_date": "进入检察机关时间",
+                "gender": "性别",
+                "birth_date": "出生年月",
+                "ethnicity": "民族",
+                "hometown": "籍贯出生地",
+                "work_start_date": "参加工作时间",
+                "party_date": "入党时间",
+                "fulltime_education": "全日制学历学位",
+                "fulltime_school": "全日制毕业院校及专业",
+                "parttime_education": "在职学历学位",
+                "parttime_school": "在职毕业院校及专业",
+                "rewards": "奖惩",
+                "remarks": "备注",
+            }
+            # 动态添加年度考核字段
+            assessment_years = self.db.get_assessment_years() or []
+            for idx, year in enumerate(assessment_years):
+                mapping[f"assessment_{idx}"] = f"{year}年年度考核结果"
+            return mapping
+
+        elif table_name == 'rewards':
+            return {
+                "sequence": "序号",
+                "name": "姓名",
+                "reward_name": "奖励名称",
+                "reward_date": "奖励批准日期",
+                "reward_unit": "奖励批准单位",
+                "reward_authority_type": "批准机关性质",
+                "punishment_name": "惩戒名称",
+                "punishment_date": "惩处批准日期",
+                "punishment_unit": "惩戒批准单位",
+                "punishment_authority_type": "惩戒批准机关性质",
+                "impact_period": "影响期",
+            }
+
+        elif table_name == 'family':
+            return {
+                "sequence": "序号",
+                "name": "姓名",
+                "relation": "称谓",
+                "family_name": "家庭成员姓名",
+                "birth_date": "出生日期",
+                "political_status": "政治面貌",
+                "work_unit": "家庭成员工作单位",
+                "position": "职务",
+            }
+
+        elif table_name == 'resume':
+            return {
+                "sequence": "序号",
+                "name": "姓名",
+                "resume_text": "简历信息",
+            }
+
+        return {}
+
     def open_ai_chat(self):
         """
-        启动 AI 分析对话框 (Token 优化版)
+        启动 AI 分析对话框 (全列读取 + 性能优化版)
         """
         try:
-            # 1. 获取数据
+            # 1. 获取当前筛选后的数据
             current_data = self.current_results_dict.get(self.current_table_name, [])
             if not current_data:
                 QMessageBox.warning(self, "提示", f"当前【{self.get_table_name(self.current_table_name)}】没有数据。")
                 return
 
-            # 2. 定义关键字段 (只选对分析有用的列，去掉边缘数据)
-            # 这是一个精简版的映射，去掉了如“序号”、“备注”等通常对统计分析无用的字段
-            field_mapping = {}
+            # 2. 获取该表的所有字段映射 (English Key -> Chinese Header)
+            # 这一步保证了读取的是“所有列”
+            full_mapping = self.get_full_field_mapping(self.current_table_name)
 
-            if self.current_table_name == 'base_info':
-                field_mapping = {
-                    "姓名": "name", "职务": "current_position", "职级": "current_grade",
-                    "学历": "fulltime_education", "出生": "birth_date",
-                    "入额": "admission_date", "下次晋升": "next_promotion"
-                }
-
-            elif self.current_table_name == 'rewards':
-                field_mapping = {
-                    "姓名": "name", "奖励": "reward_name", "时间": "reward_date",
-                    "惩戒": "punishment_name", "惩戒时间": "punishment_date"
-                }
-
-            elif self.current_table_name == 'family':
-                field_mapping = {
-                    "姓名": "name", "关系": "relation", "亲属": "family_name",
-                    "面貌": "political_status", "单位": "work_unit", "职务": "position"
-                }
-
-            elif self.current_table_name == 'resume':
-                field_mapping = {"姓名": "name", "简历": "resume_text"}
+            # 如果映射为空（异常情况），则直接使用数据库字段名
+            if not full_mapping and current_data:
+                full_mapping = {k: k for k in current_data[0].keys()}
 
             # 3. 构建 CSV 数据 (Token 密度最大化)
             csv_lines = []
 
-            # 3.1 表头
-            headers = list(field_mapping.keys())
-            csv_lines.append(",".join(headers))  # 使用逗号分隔
+            # 3.1 生成表头 (使用中文，帮助 AI 理解含义)
+            # 我们只提取数据中实际存在的列（防止数据库结构变更导致报错）
+            available_keys = []
+            if current_data:
+                # 过滤掉不需要的系统字段（如 id），保留业务字段
+                sample_row = current_data[0]
+                for db_key in full_mapping.keys():
+                    if db_key in sample_row:
+                        available_keys.append(db_key)
 
-            # 3.2 数据行
-            # 限制数据量：CPU 推理建议限制在 50 行以内
-            limit_data = current_data[:50]
-            db_keys = list(field_mapping.values())
+            # 对应的中文表头列表
+            headers = [full_mapping[k] for k in available_keys]
+            csv_lines.append(",".join(headers))
 
-            for person in limit_data:
+            # 3.2 智能数据截断与格式化
+            # 为了防止 Context Overflow，我们需要一种策略
+            # 策略：不限制列，但限制行数，或者依靠用户在 UI 中选择较大的 Context Window
+
+            # 建议：读取前 100 条数据（一般 AI 处理 100 条全列数据是极限）
+            # 如果你需要处理更多，请在 ai_chat.py 界面中把 Context 设为 16384 或更高
+            limit_rows = 50
+            process_data = current_data[:limit_rows]
+
+            for person in process_data:
                 row_values = []
-                for key in db_keys:
+                for key in available_keys:
                     val = person.get(key)
                     # 处理空值
                     if val is None: val = ""
-                    val = str(val)
+                    val = str(val).strip()
 
-                    # 【关键清洗步骤】
-                    # 1. 去除换行符：保持一行一条记录
+                    # 【关键清洗步骤 - 性能核心】
+                    # 1. 去除换行符和多余空格：极大地减少 Token 消耗
+                    val = re.sub(r'\s+', ' ', val)
                     # 2. 替换英文逗号：防止破坏 CSV 结构
-                    val = val.replace('\n', ' ').replace('\r', '').replace(',', '，')
-
+                    val = val.replace(',', '，')
 
                     row_values.append(val)
 
@@ -647,34 +721,41 @@ class QueryTab(QWidget):
 
             # 4. 组合最终文本
             context_str = "\n".join(csv_lines)
+            row_count = len(process_data)
+            total_count = len(current_data)
+
+            note = ""
+            if total_count > limit_rows:
+                note = f"\n(注：当前表格共 {total_count} 人，为保证 AI 运行速度，仅截取前 {limit_rows} 人进行分析。)"
 
             # 明确告诉 AI 这是一个 CSV 数据
             final_data_context = (
                 f"Data({self.get_table_name(self.current_table_name)}):\n"
                 f"```csv\n{context_str}\n```"
+                f"{note}"
             )
 
             # 5. 打开窗口
             try:
-                from ai_chat import AIChatDialog
-            except ImportError as e:
-                QMessageBox.critical(self, "组件缺失", f"无法加载 AI 模块：\n{e}")
-                return
-
-            if hasattr(self, 'ai_dialog') and self.ai_dialog is not None:
-                try:
+                # 重新加载模块以防热更新问题
+                import ai_chat
+                # 必须传递父窗口 self，否则可能会被垃圾回收
+                if hasattr(self, 'ai_dialog') and self.ai_dialog is not None:
                     self.ai_dialog.close()
-                except:
-                    pass
 
-            self.ai_dialog = AIChatDialog(final_data_context, self)
-            self.ai_dialog.setWindowTitle(f"智能分析 - {self.get_table_name(self.current_table_name)}")
-            self.ai_dialog.show()
+                self.ai_dialog = ai_chat.AIChatDialog(final_data_context, self)
+                self.ai_dialog.setWindowTitle(f"智能分析 - {self.get_table_name(self.current_table_name)}")
+                self.ai_dialog.show()
+
+            except Exception as e:
+                import traceback
+                logger.error(f"AI Dialog Error: {traceback.format_exc()}")
+                QMessageBox.critical(self, "组件错误", f"无法打开 AI 窗口：\n{e}")
 
         except Exception as e:
             import traceback
-            logger.error(f"AI Error: {traceback.format_exc()}")
-            QMessageBox.critical(self, "错误", f"AI分析出错：\n{str(e)}")
+            logger.error(f"AI Logic Error: {traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"AI分析准备阶段出错：\n{str(e)}")
 
     def show_table_data(self, table_name: str):
         """显示指定表的数据"""
