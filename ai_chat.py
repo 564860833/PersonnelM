@@ -22,6 +22,11 @@ class AIWorker(QObject):
         self.user_query = user_query
         self.n_ctx = n_ctx
         self.api_url = "http://127.0.0.1:11434/api/chat"
+        self._is_running = True  # 新增：运行状态标志位
+
+    def stop(self):
+        """新增：停止运行的方法"""
+        self._is_running = False
 
     def run(self):
         try:
@@ -36,13 +41,13 @@ class AIWorker(QObject):
                      "content": "You are a helpful HR data assistant. Answer based on the provided data."},
                     {"role": "user", "content": full_user_content}
                 ],
-                "stream": False,
+                "stream": True,  # 修改为 True，允许流式读取并随时中断
                 "options": {
                     "num_ctx": self.n_ctx
                 }
             }
 
-            response = requests.post(self.api_url, json=payload, timeout=300)
+            response = requests.post(self.api_url, json=payload, stream=True, timeout=300)
 
             if response.status_code == 404:
                 self.finished.emit(f"错误: 找不到模型 `{self.model_name}`。")
@@ -50,17 +55,34 @@ class AIWorker(QObject):
 
             response.raise_for_status()
 
-            result = response.json()
-            answer = result.get('message', {}).get('content', '')
+            answer = ""
+            # 迭代读取流式返回的内容
+            for line in response.iter_lines():
+                # 如果外部调用了 stop()，则中断连接
+                if not self._is_running:
+                    print("DEBUG: 收到停止信号，正在中断与 Ollama 的连接...")
+                    response.close()
+                    # 不再发送 finished 信号，直接结束
+                    return
 
-            self.finished.emit(answer)
+                if line:
+                    data = json.loads(line)
+                    answer += data.get('message', {}).get('content', '')
+
+            # 正常完成时发送结果
+            if self._is_running:
+                self.finished.emit(answer)
 
         except requests.exceptions.ConnectionError:
             self.finished.emit("错误: 无法连接到本地 Ollama 服务。\n请确认 Ollama 已在后台运行。")
         except Exception as e:
-            print(f"AI Error: {e}")
-            traceback.print_exc()
-            self.finished.emit(f"AI 运行出错: {str(e)}")
+            if not self._is_running:
+                # 如果是手动停止引发的异常（如断开连接），则忽略
+                pass
+            else:
+                print(f"AI Error: {e}")
+                traceback.print_exc()
+                self.finished.emit(f"AI 运行出错: {str(e)}")
 
 
 class AIChatDialog(QDialog):
@@ -70,6 +92,15 @@ class AIChatDialog(QDialog):
         self.setWindowTitle("智能分析助手 (Ollama 自动识别模型版)")
         self.resize(900, 800)
         self.setup_ui()
+
+    def closeEvent(self, event):
+        """重写关闭事件，在关闭对话框时中断 AI 分析"""
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.stop()
+            self.chat_history.append("<p style='color:orange;'><i>(AI 分析已强制中止)</i></p>")
+
+        # 接受关闭事件，正常关闭窗口
+        event.accept()
 
     def get_local_models(self):
         """调用 Ollama API 获取本地已安装的模型列表"""
@@ -116,6 +147,7 @@ class AIChatDialog(QDialog):
         self.refresh_btn = QPushButton("刷新列表")
         self.refresh_btn.setToolTip("如果你刚刚导入了新模型，点击此按钮刷新列表")
         self.refresh_btn.clicked.connect(self.refresh_models)
+        self.refresh_btn.setAutoDefault(False)
         settings_layout.addWidget(self.refresh_btn)
 
         settings_layout.addSpacing(20)
@@ -145,6 +177,8 @@ class AIChatDialog(QDialog):
 
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self.start_inference)
+        self.send_btn.setAutoDefault(True)  # <--- 新增这行
+        self.send_btn.setDefault(True)
         self.send_btn.setStyleSheet("""
             QPushButton { background-color: #2196F3; color: white; border-radius: 4px; padding: 5px 15px; }
             QPushButton:hover { background-color: #1976D2; }
@@ -196,6 +230,8 @@ class AIChatDialog(QDialog):
 
         self.worker = AIWorker(model_name, system_prompt, question, n_ctx)
         self.worker_thread = threading.Thread(target=self.worker.run)
+
+        self.worker_thread.daemon = True
         self.worker.finished.connect(self.handle_response)
         self.worker_thread.start()
 
