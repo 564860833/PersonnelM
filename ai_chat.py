@@ -187,7 +187,7 @@ class AIChatDialog(QDialog):
         n_ctx = int(ctx_text)
 
         # 1. 更新 UI 显示
-        self.chat_history.append(f"<br><span style='color: #0277bd; font-size: 14px;'><b>👤 我：</b></span>{question}<br>")
+        self.chat_history.append(f"<br><span style='color: #0277bd; '><b>👤 我：</b></span>{question}<br>")
         self.input_field.clear()
         self.send_btn.setEnabled(False)
         self.status_label.setText("AI 正在思考中...")
@@ -239,7 +239,7 @@ class AIChatDialog(QDialog):
                 """
 
         # 插入 AI 的名字标识和回答内容
-        self.chat_history.append(f"<span style='color: #9c27b0; font-size: 14px;'><b>🤖 AI：</b></span><br>{styled_html}")
+        self.chat_history.append(f"<span style='color: #9c27b0; '><b>🤖 AI：</b></span><br>{styled_html}")
 
         # 使用全角字符画一条柔和的浅色横线作为分界线，绝对不会引起 PyQt5 的光标错位 Bug
         self.chat_history.append(
