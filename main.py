@@ -16,47 +16,6 @@ os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = plugin_path
 
 print(f"Qt 插件路径已设置为: {plugin_path}")
 
-# ============ Windows 7 兼容性修复 - 必须在所有其他导入之前 ============
-def fix_windows7_compatibility():
-    """Windows 7 兼容性修复"""
-    if sys.platform == "win32":
-        # 检测 Windows 版本
-        win_version = sys.getwindowsversion()
-
-        # Windows 7 是版本 6.1
-        if win_version.major == 6 and win_version.minor == 1:
-            print("检测到 Windows 7 系统，应用兼容性修复...")
-
-            # 1. 强制禁用多进程
-            os.environ["MULTIPROCESSING_FORCE"] = "0"
-            os.environ["DISABLE_MULTIPROCESSING"] = "1"
-
-            # 2. 设置兼容的导入模式
-            os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
-
-            # 3. 禁用问题模块的预加载
-            problem_modules = [
-                '_socket', 'socket', 'multiprocessing',
-                'multiprocessing.context', 'multiprocessing.reduction',
-                '_multiprocessing'
-            ]
-
-            for module in problem_modules:
-                if module in sys.modules:
-                    del sys.modules[module]
-
-            # 4. 设置安全的 socket 导入
-            try:
-                import socket
-                socket.socket = socket.socket  # 确保 socket 可用
-            except ImportError:
-                print("警告: socket 模块导入失败，应用功能可能受限")
-
-            print("Windows 7 兼容性修复完成")
-
-
-# 立即应用 Windows 7 修复
-fix_windows7_compatibility()
 
 # 现在安全导入其他模块
 from PyQt5.QtGui import QIcon
@@ -84,12 +43,6 @@ def resource_path(relative_path):
 def create_safe_application():
     """创建兼容 Windows 7 的 Qt 应用程序"""
     try:
-        # Windows 7 特殊处理
-        if sys.platform == "win32" and sys.getwindowsversion()[:2] == (6, 1):
-            # 设置 Qt 的兼容模式
-            os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
-            os.environ["QT_SCALE_FACTOR"] = "1"
-
         app = QApplication(sys.argv)
         app.setApplicationName(config.APP_NAME)
         app.setApplicationVersion(config.APP_VERSION)
@@ -100,16 +53,13 @@ def create_safe_application():
             icon_path = resource_path('app_icon.ico')
             logger.info(f"尝试加载应用程序图标: {icon_path}")
 
-            # Windows 7兼容处理 - 确保图标正确加载
-            if sys.platform == "win32" and sys.getwindowsversion()[:2] == (6, 1):
-                # 使用Windows API确保兼容性
+            # 注册应用 AppUserModelID (适用于 Win10/Win11，确保任务栏图标独立且正确显示)
+            if sys.platform == "win32":
                 import ctypes
                 try:
-                    # 设置应用程序ID确保任务栏图标正确显示
                     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('PersonnelSystem')
-                    logger.info("Windows 7 图标兼容处理已应用")
                 except Exception as e:
-                    logger.error(f"Windows 7 图标兼容处理失败: {e}")
+                    logger.error(f"注册应用ID失败: {e}")
 
             # 创建并设置图标
             if os.path.exists(icon_path):
@@ -120,7 +70,6 @@ def create_safe_application():
                 logger.warning(f"图标文件不存在: {icon_path}")
         except Exception as e:
             logger.error(f"设置应用程序图标失败: {e}")
-            # 创建空图标作为回退
             app_icon = QIcon()
             app.setWindowIcon(app_icon)
         # ===================================================
