@@ -92,7 +92,12 @@ class AIChatDialog(QDialog):
             response = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
             if response.status_code == 200:
                 data = response.json()
+                # 获取模型列表
                 models = [model['name'] for model in data.get('models', [])]
+
+                # 新增：对模型名称进行自动排序（按字母/数字升序排列）
+                models.sort()
+
                 return models
         except Exception as e:
             print(f"获取模型列表失败: {e}")
@@ -126,8 +131,8 @@ class AIChatDialog(QDialog):
         settings_layout.addSpacing(20)
         settings_layout.addWidget(QLabel("上下文长度:"))
         self.ctx_combo = QComboBox()
-        self.ctx_combo.addItems(["2048", "4096", "8192", "16384"])
-        self.ctx_combo.setCurrentIndex(1)
+        self.ctx_combo.addItems(["4096", "8192", "16384","32768", "65536"])
+        self.ctx_combo.setCurrentIndex(0)
         settings_layout.addWidget(self.ctx_combo)
 
         # 新增：清空对话按钮
