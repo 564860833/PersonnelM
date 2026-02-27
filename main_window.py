@@ -3,6 +3,7 @@ import logging
 import sys
 from pathlib import Path
 import pandas as pd
+from ollama_manager import LocalOllamaManager
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
@@ -50,6 +51,8 @@ class MainWindow(QMainWindow):
             logger.info(f"管理员账号 {username} 获得所有权限")
 
         self.init_ui()
+        self.ollama_manager = LocalOllamaManager()
+        self.ollama_manager.start()
         logger.info(f"主窗口已创建，当前用户: {self.username}")
         logger.info(
             f"用户权限: base_info={self.permissions['base_info']}, rewards={self.permissions['rewards']}, family={self.permissions['family']}, resume={self.permissions['resume']}")
@@ -381,4 +384,6 @@ class MainWindow(QMainWindow):
         logger.info(f"用户 {self.username} 退出系统")
         if hasattr(self.db, 'close'):
             self.db.close()
+        if hasattr(self, 'ollama_manager'):
+            self.ollama_manager.stop()
         event.accept()
