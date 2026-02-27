@@ -71,6 +71,27 @@ class GradeSelectionDialog(QDialog):
 
         self.setLayout(layout)
 
+    def on_all_selected(self, state):
+        """当'全部'被选中/取消时，更新所有职级选项"""
+        for check in self.grade_checks:
+            check.blockSignals(True)  # 屏蔽信号
+            check.setChecked(state == Qt.Checked)
+            check.blockSignals(False) # 恢复信号
+
+    def on_grade_selected(self, state=None):
+        """当单个职级被选择时，更新'全部'状态"""
+        all_selected = all(check.isChecked() for check in self.grade_checks)
+        self.all_check.blockSignals(True)
+        self.all_check.setChecked(all_selected)
+        self.all_check.blockSignals(False)
+
+    def selected_grades(self):
+        """返回选中的职级列表"""
+        if self.all_check.isChecked():
+            return [check.text() for check in self.grade_checks]
+        else:
+            return [check.text() for check in self.grade_checks if check.isChecked()]
+
 class ColumnSelectionDialog(QDialog):
     """用于选择要发送给 AI 分析的列的对话框"""
 
@@ -141,27 +162,22 @@ class ColumnSelectionDialog(QDialog):
 
     def on_all_selected(self, state):
         """当'全部'被选中/取消时，更新所有职级选项"""
-        # 暂时断开信号连接，避免递归
+        # 使用 blockSignals(True) 临时屏蔽信号，防止死循环。这比 disconnect 更安全！
         for check in self.grade_checks:
-            check.stateChanged.disconnect(self.on_grade_selected)
-
-        # 设置所有职级选项的状态
-        for check in self.grade_checks:
+            check.blockSignals(True)  # 屏蔽信号
             check.setChecked(state == Qt.Checked)
+            check.blockSignals(False) # 恢复信号
 
-        # 重新连接信号
-        for check in self.grade_checks:
-            check.stateChanged.connect(self.on_grade_selected)
-
-    def on_grade_selected(self):
+    # 修复：增加 state=None 参数，接收 stateChanged 传过来的整数值，防止引发 TypeError
+    def on_grade_selected(self, state=None):
         """当单个职级被选择时，更新'全部'状态"""
         # 检查是否所有职级都被选中
         all_selected = all(check.isChecked() for check in self.grade_checks)
 
-        # 暂时断开信号连接，避免递归
-        self.all_check.stateChanged.disconnect(self.on_all_selected)
+        # 同样使用 blockSignals 替代 disconnect
+        self.all_check.blockSignals(True)
         self.all_check.setChecked(all_selected)
-        self.all_check.stateChanged.connect(self.on_all_selected)
+        self.all_check.blockSignals(False)
 
     def selected_grades(self):
         """返回选中的职级列表"""
@@ -486,13 +502,19 @@ class QueryTab(QWidget):
 
     def select_grades(self):
         """弹出职级选择对话框"""
-        dlg = GradeSelectionDialog(self)
-        if dlg.exec_() == QDialog.Accepted:
-            selected = dlg.selected_grades()
-            if selected:
-                self.grade_display.setText(", ".join(selected))
-            else:
-                self.grade_display.clear()
+        try:
+            dlg = GradeSelectionDialog(self)
+            if dlg.exec_() == QDialog.Accepted:
+                selected = dlg.selected_grades()
+                if selected:
+                    self.grade_display.setText(", ".join(selected))
+                else:
+                    self.grade_display.clear()
+        except Exception as e:
+            import traceback
+            from PyQt5.QtWidgets import QMessageBox
+            # 如果程序出错，这里会弹出具体的错误原因，不再直接闪退！
+            QMessageBox.critical(self, "代码报错抓取", f"打开对话框时发生错误:\n{traceback.format_exc()}")
 
     def clear_conditions(self):
         """清空查询条件"""
@@ -776,7 +798,7 @@ class QueryTab(QWidget):
             csv_lines.append(",".join(headers))
 
             # 3.2 智能数据截断与格式化
-            limit_rows = 50
+            limit_rows = 100
             process_data = current_data[:limit_rows]
 
             for person in process_data:
