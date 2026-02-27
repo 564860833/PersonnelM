@@ -898,7 +898,7 @@ class QueryTab(QWidget):
 
             # 3. 提取用户选中的多表数据并构建上下文
             final_data_contexts = []
-            limit_rows_per_table = 100  # 每个表最多传入的行数（防 token 爆仓）
+            limit_rows_per_table = 1000  # 每个表最多传入的行数（防 token 爆仓）
 
             for t_key, selected_headers in selected_data_config.items():
                 current_data = self.current_results_dict.get(t_key, [])
