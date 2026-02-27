@@ -182,7 +182,7 @@ class AIChatDialog(QDialog):
         n_ctx = int(ctx_text)
 
         # 1. 更新 UI 显示
-        self.chat_history.append(f"<b>我:</b> {question}")
+        self.chat_history.append(f"<br><span style='color: #0277bd; font-size: 14px;'><b>👤 我：</b></span>{question}<br>")
         self.input_field.clear()
         self.send_btn.setEnabled(False)
         self.status_label.setText("AI 正在思考中...")
@@ -196,7 +196,7 @@ class AIChatDialog(QDialog):
                 "### 数据内容\n"
                 f"{self.data_context}\n\n"
                 "### 输出规则\n"
-                "1. 使用 Markdown 表格列出多条数据。\n"
+                "1. 在输出多条数据时，使用 Markdown 表格列出多条数据。\n"
                 "2. 回复简洁、专业，只需要在最后进行总结，禁止输出与数据无关的内容。\n"
         )
             self.history_messages.append({"role": "system", "content": system_content})
@@ -223,16 +223,22 @@ class AIChatDialog(QDialog):
         except:
             answer_html = final_answer.replace('\n', '<br>')
 
+        # 仅对表格做基础样式，不包裹外部背景 div
         styled_html = f"""
-        <style>
-            table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; }}
-            th {{ background-color: #f2f2f2; }}
-        </style>
-        <div>{answer_html}</div>
-        """
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+                    th, td {{ border: 1px solid #ddd; padding: 8px; }}
+                    th {{ background-color: #f2f2f2; }}
+                </style>
+                {answer_html}
+                """
 
-        self.chat_history.append(f"<b>AI:</b><br>{styled_html}<hr>")
+        # 插入 AI 的名字标识和回答内容
+        self.chat_history.append(f"<span style='color: #9c27b0; font-size: 14px;'><b>🤖 AI：</b></span><br>{styled_html}")
+
+        # 使用全角字符画一条柔和的浅色横线作为分界线，绝对不会引起 PyQt5 的光标错位 Bug
+        self.chat_history.append(
+            "<div style='color: #e0e0e0; margin-top: 10px; margin-bottom: 10px;'>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>")
 
         # 自动滚动
         self.chat_history.verticalScrollBar().setValue(self.chat_history.verticalScrollBar().maximum())
