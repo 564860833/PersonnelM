@@ -186,6 +186,35 @@ class AIChatDialog(QDialog):
         ctx_text = self.ctx_combo.currentText().split()[0]
         n_ctx = int(ctx_text)
 
+        # ================== 【新增】上下文超限预估与拦截 ==================
+        # 预估当前系统提示词（含数据）、历史对话和当前问题的总字符数
+        total_chars = len(question)
+        if not self.history_messages:
+            # 如果是首轮，加上系统提示词和完整表格数据的长度
+            total_chars += len(self.data_context) + 300
+        else:
+            # 加上所有历史消息的长度
+            total_chars += sum(len(msg.get('content', '')) for msg in self.history_messages)
+
+        # 粗略估算 Token 数量 (中文环境下，1字符约等于1.5~2个Token，此处取上限防越界)
+        estimated_tokens = int(total_chars * 1.8)
+
+        # 预留给 AI 回复的空间 (比如预留 1500 tokens 用于生成回答)
+        if estimated_tokens > (n_ctx - 1500):
+            QMessageBox.warning(
+                self,
+                "上下文超限警告",
+                f"⚠️ 数据量过大，可能导致 AI 编造信息！\n\n"
+                f"当前数据与对话预估需消耗: {estimated_tokens} Tokens\n"
+                f"您选择的上下文窗口仅为: {n_ctx} Tokens\n\n"
+                f"为防止 AI 丢失规则并产生幻觉，请执行以下操作之一：\n"
+                f"1. 在上方下拉框调大【上下文长度】（若硬件允许）\n"
+                f"2. 点击【清空对话】重置历史记忆\n"
+                f"3. 关闭此窗口，并在查询界面减少勾选的分析字段或缩小查询范围。"
+            )
+            return  # 拦截发送，避免 AI 瞎编
+        # ==================================================================
+
         # 1. 更新 UI 显示
         self.chat_history.append(f"<br><span style='color: #0277bd; '><b>👤 我：</b></span>{question}<br>")
         self.input_field.clear()
